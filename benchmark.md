@@ -5,7 +5,7 @@ The transformation is repeated a #iterations times.
 # Experiment 1
 --------------
 
-#iterations = 1000
+\#iterations = 1000
 
 | # particles | strong node time (s) | weak node time (s) | distributed system (s) |
 |:-----------:|:--------------------:|:------------------:|:----------------------:|
