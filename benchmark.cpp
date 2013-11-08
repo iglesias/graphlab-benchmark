@@ -8,9 +8,9 @@ template <class T> class vector2D;
 class Particle2D;
 class Resampler;
 
-typedef graphlab::distributed_graph<Particle2D, graphlab::empty> graph_type;
 typedef Resampler gather_type;
 typedef vector2D<float> vector2f;
+typedef graphlab::distributed_graph<Particle2D, graphlab::empty> graph_type;
 
 template <class T>
 class vector2D {
@@ -160,15 +160,13 @@ void RandomParticle(graph_type::vertex_type& v) {
   v.data().angle = graphlab::random::gaussian();
 }
 
-void Map(unsigned int num_iterations) {
+void Map(int num_particles, int num_iterations) {
   std::cout << "Map\n";
   graphlab::distributed_control dc;
-
   graph_type graph(dc);
 
-  const unsigned long long num_particles = 1e3;
   // populate the graph with vertices
-  for (unsigned long long int i = 0; i < num_particles; i++)
+  for (int i = 0; i < num_particles; i++)
     graph.add_vertex(i, Particle2D());
 
   // commit the graph structure, marking that it is no longer to be modified
@@ -180,30 +178,80 @@ void Map(unsigned int num_iterations) {
 
   graphlab::timer timer;
   timer.start();
-  for (unsigned int i = 0; i < num_iterations; i++) graph.transform_vertices(RandomParticle);
+  for (int i = 0; i < num_iterations; i++) graph.transform_vertices(RandomParticle);
   dc.cout() << "Elapsed time: " << timer.current_time() << std::endl;
 }
 
-void Resample() {
+void Resample(int num_particles, int num_iterations, bool sparse) {
   std::cout << "Resample\n";
+
+  graphlab::distributed_control dc;
+  graph_type graph(dc);
+
+  // populate the graph with vertices and eges
+  if (sparse) {
+    for (int i = 0; i < num_particles-1; i++) {
+      graph.add_edge(i, i+1);
+      graph.add_edge(i+1, i);
+    }
+  } else {
+    for (int i = 0; i < num_particles; i++) {
+      for (int j = i+1; j < num_particles; j++) {
+        graph.add_edge(i, j);
+        graph.add_edge(j, i);
+      }
+    }
+  }
+
+  // commit the graph structure, marking that it is no longer to be modified
+  graph.finalize();
+
+  dc.cout() << "num_local_vertices = "  << graph.num_local_vertices() << std::endl;
+  dc.cout() << "num_local_own_vertices = "  << graph.num_local_own_vertices() << std::endl;
+  dc.cout() << "num_local_edges = "  << graph.num_local_edges() << std::endl;
+
+  graphlab::omni_engine<ResamplerProgram> engine(dc, graph, "sync");
+
+  graphlab::timer timer;
+  timer.start();
+
+  for (int i = 0; i < num_iterations; i++) {
+    engine.signal_all();
+    engine.start();
+  }
+
+  dc.cout() << "Elapsed time: " << timer.current_time() << std::endl;
 }
 
 int main(int argc, char** argv) {
   graphlab::command_line_options clopts("Particle filter");
 
-  std::string mode;
-  unsigned int num_iterations = 0;
-  clopts.attach_option("mode", mode, "Execution mode. Vertex transformation (map) or vertex program (resample)");
-  clopts.attach_option("iterations", num_iterations, "Number of repetitions");
+  int num_particles = 100;
+  std::string mode = "resample";
+  int num_iterations = 10;
+  bool sparse = false;
+  clopts.attach_option("particles", num_particles, "Number of particles.");
+  clopts.attach_option("mode", mode, "Execution mode. Vertex transformation (map) or vertex program (resample).");
+  clopts.attach_option("iterations", num_iterations, "Number of repetitions.");
+  clopts.attach_option("sparse", sparse, "For resample mode, use sparse graph representation.");
 
   if (!clopts.parse(argc, argv))  return EXIT_FAILURE;
-  if (mode == "")                 mode = "resample";
-  if (num_iterations == 0)        num_iterations = 10;
 
+  if (num_iterations <= 0) {
+    std::cerr << "The number of iterations must be larger than zero\n";
+    return EXIT_FAILURE;
+  }
+
+  if (num_particles <= 0) {
+    std::cerr << "The number of particles must be larger than zero\n";
+    return EXIT_FAILURE;
+  }
+
+  global_logger().set_log_level(LOG_NONE);
   graphlab::mpi_tools::init(argc, argv);
 
-  if (mode == "map")            Map(num_iterations);
-  else if (mode == "resample")  Resample();
+  if (mode == "map")            Map(num_particles, num_iterations);
+  else if (mode == "resample")  Resample(num_particles, num_iterations, sparse);
   else                          std::cerr << "Unknown mode given " << mode << ". The options are map or resample.\n";
 
   graphlab::mpi_tools::finalize();
