@@ -47,18 +47,21 @@ class Particle2D {
     Particle2D() {
       weight = angle = 0.0;
       loc.zero();
+      counter = 0;
     }
 
     Particle2D(float _x, float _y, float _theta, float _w) {
       loc.set(_x,_y);
       angle = _theta;
       weight = _w;
+      counter = 0;
     }
 
     Particle2D(vector2f _loc, float _theta, float _w) {
       loc = _loc;
       angle = _theta;
       weight = _w;
+      counter = 0;
     }
 
     bool operator<(const Particle2D &other) {
@@ -89,6 +92,7 @@ class Particle2D {
     vector2f loc;
     float angle;
     float weight;
+    int counter;
 };
 
 class Resampler {
@@ -146,6 +150,9 @@ class ResamplerProgram : public graphlab::ivertex_program<graph_type, gather_typ
       } else {
         assert(i == 0);
       }
+
+      ++vertex.data().counter;
+      if (vertex.data().counter < 10) context.signal(vertex);
     }
 
     edge_dir_type scatter_edges(icontext_type& context, const vertex_type& vertex) const {
@@ -210,15 +217,13 @@ void Resample(int num_particles, int num_iterations, bool sparse) {
   dc.cout() << "num_local_own_vertices = "  << graph.num_local_own_vertices() << std::endl;
   dc.cout() << "num_local_edges = "  << graph.num_local_edges() << std::endl;
 
-  graphlab::omni_engine<ResamplerProgram> engine(dc, graph, "sync");
+  graphlab::omni_engine<ResamplerProgram> engine(dc, graph, "async");
 
   graphlab::timer timer;
   timer.start();
 
-  for (int i = 0; i < num_iterations; i++) {
-    engine.signal_all();
-    engine.start();
-  }
+  engine.signal_all();
+  engine.start();
 
   dc.cout() << "Elapsed time: " << timer.current_time() << std::endl;
 }
@@ -229,7 +234,7 @@ int main(int argc, char** argv) {
   int num_particles = 100;
   std::string mode = "resample";
   int num_iterations = 10;
-  bool sparse = false;
+  bool sparse = true;
   clopts.attach_option("particles", num_particles, "Number of particles.");
   clopts.attach_option("mode", mode, "Execution mode. Vertex transformation (map) or vertex program (resample).");
   clopts.attach_option("iterations", num_iterations, "Number of repetitions.");
