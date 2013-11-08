@@ -2,6 +2,7 @@
 #include <iostream>
 #include <vector>
 #include <cassert>
+#include <string>
 
 template <class T> class vector2D;
 class Particle2D;
@@ -159,15 +160,15 @@ void RandomParticle(graph_type::vertex_type& v) {
   v.data().angle = graphlab::random::gaussian();
 }
 
-int main(int argc, char** argv) {
-  graphlab::mpi_tools::init(argc, argv);
+void Map(unsigned int num_iterations) {
+  std::cout << "Map\n";
   graphlab::distributed_control dc;
 
   graph_type graph(dc);
 
-  const unsigned long long NUM_PARTICLES = 1e3;
+  const unsigned long long num_particles = 1e3;
   // populate the graph with vertices
-  for (unsigned long long int i = 0; i < NUM_PARTICLES; i++)
+  for (unsigned long long int i = 0; i < num_particles; i++)
     graph.add_vertex(i, Particle2D());
 
   // commit the graph structure, marking that it is no longer to be modified
@@ -177,14 +178,33 @@ int main(int argc, char** argv) {
   dc.cout() << "num_local_own_vertices = "  << graph.num_local_own_vertices() << std::endl;
   dc.cout() << "num_local_edges = "  << graph.num_local_edges() << std::endl;
 
-  int NUM_ITERATIONS;
-  if (argc > 1) NUM_ITERATIONS = atoi(argv[1]);
-  else          NUM_ITERATIONS = 100;
-
   graphlab::timer timer;
   timer.start();
-  for (int i = 0; i < NUM_ITERATIONS; i++) graph.transform_vertices(RandomParticle);
+  for (unsigned int i = 0; i < num_iterations; i++) graph.transform_vertices(RandomParticle);
   dc.cout() << "Elapsed time: " << timer.current_time() << std::endl;
+}
+
+void Resample() {
+  std::cout << "Resample\n";
+}
+
+int main(int argc, char** argv) {
+  graphlab::command_line_options clopts("Particle filter");
+
+  std::string mode;
+  unsigned int num_iterations = 0;
+  clopts.attach_option("mode", mode, "Execution mode. Vertex transformation (map) or vertex program (resample)");
+  clopts.attach_option("iterations", num_iterations, "Number of repetitions");
+
+  if (!clopts.parse(argc, argv))  return EXIT_FAILURE;
+  if (mode == "")                 mode = "resample";
+  if (num_iterations == 0)        num_iterations = 10;
+
+  graphlab::mpi_tools::init(argc, argv);
+
+  if (mode == "map")            Map(num_iterations);
+  else if (mode == "resample")  Resample();
+  else                          std::cerr << "Unknown mode given " << mode << ". The options are map or resample.\n";
 
   graphlab::mpi_tools::finalize();
 
