@@ -1,48 +1,72 @@
 #include <graphlab.hpp>
 #include <iostream>
+#include <vector>
+#include <cassert>
+
+template <class T> class vector2D;
+class Particle2D;
+class Resampler;
+
+typedef graphlab::distributed_graph<Particle2D, graphlab::empty> graph_type;
+typedef Resampler gather_type;
+typedef vector2D<float> vector2f;
 
 template <class T>
 class vector2D {
   public:
-    T x,y;
+    vector2D() { }
 
-  public:
-    vector2D()
-      {}
+    vector2D(T nx,T ny) {
+      x = nx;
+      y = ny;
+    }
 
-    vector2D(T nx,T ny)
-      {x=nx; y=ny;}
-
-    vector2D<T> &operator=(vector2D<T> p)
-      {set(p.x, p.y); return(*this);}
+    vector2D<T> &operator=(const vector2D<T>& p) {
+      set(p.x, p.y);
+      return *this;
+    }
 
     /// set the components of the vector
-    void set(T nx,T ny)
-      {x=nx; y=ny;}
+    void set(T nx,T ny) {
+      x = nx;
+      y = ny;
+    }
 
     /// zero all components of the vector void zero()
-    void zero()
-      {x=y=0;}
-};
+    void zero() {
+      x = y = 0;
+    }
 
-typedef vector2D<float> vector2f;
+  public:
+    T x,y;
+};
 
 class Particle2D {
   public:
-    vector2f loc;
-    float angle;
-    float weight;
+    Particle2D() {
+      weight = angle = 0.0;
+      loc.zero();
+    }
 
-  public:
-    Particle2D() {weight = angle = 0.0; loc.zero();}
+    Particle2D(float _x, float _y, float _theta, float _w) {
+      loc.set(_x,_y);
+      angle = _theta;
+      weight = _w;
+    }
 
-    Particle2D(float _x, float _y, float _theta, float _w) { loc.set(_x,_y); angle = _theta; weight = _w;}
+    Particle2D(vector2f _loc, float _theta, float _w) {
+      loc = _loc;
+      angle = _theta;
+      weight = _w;
+    }
 
-    Particle2D(vector2f _loc, float _theta, float _w) { loc = _loc; angle = _theta; weight = _w;}
+    bool operator<(const Particle2D &other) {
+      return weight<other.weight;
+    }
 
-    bool operator<(const Particle2D &other) {return weight<other.weight;}
-
-    bool operator>(const Particle2D &other) {return weight>other.weight;}
+    bool operator>(const Particle2D &other) {
+      return weight>other.weight;
+    }
 
     Particle2D &operator=(const Particle2D &other) {
       angle = other.angle;
@@ -59,9 +83,76 @@ class Particle2D {
     void load(graphlab::iarchive& iarc) {
       iarc >> angle >> weight >> loc.x >> loc.y;
     }
+
+  public:
+    vector2f loc;
+    float angle;
+    float weight;
 };
 
-typedef graphlab::distributed_graph<Particle2D, graphlab::empty> graph_type;
+class Resampler {
+  public:
+    Resampler() { };
+
+    explicit Resampler(const Particle2D& particle) {
+      in_particles.push_back(particle);
+    }
+
+    Resampler& operator+=(const Resampler& other) {
+      for (unsigned int i = 0; i < other.in_particles.size(); i++)
+        in_particles.push_back(other.in_particles[i]);
+
+      return *this;
+    }
+
+    void save(graphlab::oarchive& oarc) const {
+      oarc << in_particles;
+    }
+
+    void load(graphlab::iarchive& iarc) {
+      iarc >> in_particles;
+    }
+
+  public:
+    std::vector<Particle2D> in_particles;
+};
+
+class ResamplerProgram : public graphlab::ivertex_program<graph_type, gather_type>, public graphlab::IS_POD_TYPE {
+  public:
+    edge_dir_type gather_edges(icontext_type& context, const vertex_type& vertex) const {
+      return graphlab::IN_EDGES;
+    }
+
+    gather_type gather(icontext_type& context, const vertex_type& vertex, edge_type& edge) const {
+      return Resampler(edge.source().data());
+    }
+
+    void apply(icontext_type& context, vertex_type& vertex, const gather_type& total) {
+      // compute the CDF of the particles that participate in this resampling
+      std::vector<float> weight_cdf(1+total.in_particles.size(), 0.0);
+      weight_cdf[0] = vertex.data().weight;
+      for (unsigned int i = 0; i < total.in_particles.size(); ++i)
+        weight_cdf[i+1] = weight_cdf[i] + total.in_particles[i].weight;
+
+      // resample
+      float beta = graphlab::random::uniform(0.0f, weight_cdf[weight_cdf.size()-1]);
+      unsigned int i = 0;
+      while (weight_cdf[i] < beta) i++;
+      if (i > 0) {
+        assert(i <= total.in_particles.size());
+        // i-1 because the the first weight in weight_cdf corresponds to the current vertex
+        vertex.data() = total.in_particles[i-1];
+      } else {
+        assert(i == 0);
+      }
+    }
+
+    edge_dir_type scatter_edges(icontext_type& context, const vertex_type& vertex) const {
+      return graphlab::NO_EDGES;
+    }
+
+    void scatter(icontext_type& context, const vertex_type& vertex, const edge_type& edge) const { }
+};
 
 void RandomParticle(graph_type::vertex_type& v) {
   v.data().loc.set(graphlab::random::gaussian(), graphlab::random::gaussian());
