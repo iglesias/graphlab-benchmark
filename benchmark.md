@@ -16,7 +16,7 @@ The transformation is repeated a #iterations times.
 
 Using the distributed setup, 1000 particles and varying the number of iterations.
 
-| # iterations | ~ time (s) | 
+| # iterations | ~ time (s) |
 |:------------:|:----------:|
 | 1            | 0.03       |
 | 10           | 0.3        |
