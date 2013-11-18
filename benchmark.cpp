@@ -217,7 +217,7 @@ void Resample(int num_particles, int num_iterations, bool sparse) {
   dc.cout() << "num_local_own_vertices = "  << graph.num_local_own_vertices() << std::endl;
   dc.cout() << "num_local_edges = "  << graph.num_local_edges() << std::endl;
 
-  graphlab::omni_engine<ResamplerProgram> engine(dc, graph, "async");
+  graphlab::omni_engine<ResamplerProgram> engine(dc, graph, "sync");
 
   graphlab::timer timer;
   timer.start();
