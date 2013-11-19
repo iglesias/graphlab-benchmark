@@ -152,7 +152,7 @@ class ResamplerProgram : public graphlab::ivertex_program<graph_type, gather_typ
       }
 
       ++vertex.data().counter;
-      if (vertex.data().counter < 10) context.signal(vertex);
+      if (vertex.data().counter < num_iterations) context.signal(vertex);
     }
 
     edge_dir_type scatter_edges(icontext_type& context, const vertex_type& vertex) const {
@@ -160,7 +160,16 @@ class ResamplerProgram : public graphlab::ivertex_program<graph_type, gather_typ
     }
 
     void scatter(icontext_type& context, const vertex_type& vertex, const edge_type& edge) const { }
+
+    static void set_iterations(int n) {
+      num_iterations = n;
+    }
+
+  private:
+    static int num_iterations;
 };
+
+int ResamplerProgram::num_iterations = 0;
 
 void RandomParticle(graph_type::vertex_type& v) {
   v.data().loc.set(graphlab::random::gaussian(), graphlab::random::gaussian());
@@ -191,6 +200,8 @@ void Map(int num_particles, int num_iterations) {
 
 void Resample(int num_particles, int num_iterations, bool sparse) {
   std::cout << "Resample\n";
+
+  ResamplerProgram::set_iterations(num_iterations);
 
   graphlab::distributed_control dc;
   graph_type graph(dc);
