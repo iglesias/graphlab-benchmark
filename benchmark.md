@@ -22,3 +22,21 @@ Using the distributed setup, 1000 particles and varying the number of iterations
 | 10           | 0.3        |
 | 100          | 2.7        |
 | 1000         | 30         |
+
+### Experiment 3
+
+Distributed setup. Compare aggregation framework, complete, and sparse graphs. Number of
+particles equal to 1000. Time per iteration obtained averaging the total total time for
+ten iterations.
+
+| aggregation (s) | complete (s) | sparse (s) |
+|:---------------:|:------------:|:----------:|
+|    0.15         |      7.94    |    0.19    |
+
+Time for the complete graph as a function of the number of particles.
+
+| # particles | complete (s) |
+|:-----------:|:------------:|
+|    1000     |      7.9     |
+|     100     |      0.2     |
+|      10     |      0.15    |
